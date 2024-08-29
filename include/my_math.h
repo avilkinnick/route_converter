@@ -28,3 +28,5 @@ typedef struct geometry
     uint32_t* indices;
     uint32_t indices_size;
 } geometry_t;
+
+void geometry_destroy(geometry_t* geometry);
