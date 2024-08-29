@@ -4,6 +4,7 @@
 
 #include "defines.h"
 
+#include "geometry_reference.h"
 #include "object_reference.h"
 
 #include "gltf_types/accessor.h"
@@ -18,6 +19,7 @@
 #include "gltf_types/scene.h"
 #include "gltf_types/texture.h"
 
+// TODO: fix destroying of objects
 typedef struct application
 {
     const char* route_name;
@@ -27,6 +29,8 @@ typedef struct application
     uint32_t object_references_size;
     char (*unique_relative_model_paths)[MAX_CHAR_ARRAY_SIZE];
     uint32_t unique_relative_model_paths_size;
+    geometry_reference_t* geometry_references;
+    uint32_t geometry_references_size;
 
     gltf_asset_t gltf_asset;
     gltf_buffer_t gltf_buffer;
@@ -42,7 +46,7 @@ typedef struct application
     uint32_t gltf_meshes_size;
     gltf_node_t* gltf_nodes;
     uint32_t gltf_nodes_size;
-    gltf_scene_t scene;
+    gltf_scene_t gltf_scene;
 } application_t;
 
 void application_destroy(application_t* application);

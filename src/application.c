@@ -14,6 +14,8 @@ static int first_char_is_slash(const char* string)
 
 void application_destroy(application_t* application)
 {
+    gltf_scene_destroy(&application->gltf_scene);
+
     free(application->gltf_nodes);
     application->gltf_nodes = NULL;
 
@@ -31,6 +33,9 @@ void application_destroy(application_t* application)
 
     free(application->gltf_accessors);
     application->gltf_accessors = NULL;
+
+    free(application->geometry_references);
+    application->geometry_references = NULL;
 
     free(application->unique_relative_model_paths);
     application->unique_relative_model_paths = NULL;
