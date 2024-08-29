@@ -1,0 +1,5 @@
+*.user*
+*.vs*
+build/
+dmd_routes/
+gltf_route/

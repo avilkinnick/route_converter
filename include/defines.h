@@ -1,0 +1,1 @@
+#define MAX_CHAR_ARRAY_SIZE 256
