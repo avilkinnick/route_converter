@@ -6,9 +6,7 @@
 
 #include "cmake_defines.h"
 
-#include "mesh_reference.h"
 #include "my_math.h"
-#include "object_reference.h"
 
 static int first_char_is_slash(const char* string)
 {
@@ -20,7 +18,7 @@ static int string_is_float(const char* string)
     for (uint32_t i = 0; i < strlen(string); ++i)
     {
         char ch = string[i];
-        if ((ch < '0' || ch > '9') && ch != '.' && ch != '-' && ch != 'e')
+        if ((ch < '0' || ch > '9') && ch != '.' && ch != '-' && ch != 'e' && ch != 'E')
         {
             return 0;
         }
@@ -29,8 +27,24 @@ static int string_is_float(const char* string)
     return 1;
 }
 
+static uint32_t find_char_index(const char* string, uint32_t offset, char ch)
+{
+    for (uint32_t i = offset; i < strlen(string); ++i)
+    {
+        if (string[i] == ch)
+        {
+            return i;
+        }
+    }
+
+    return 0;
+}
+
 void application_destroy(application_t* application)
 {
+    free(application->transformation_references);
+    application->transformation_references = NULL;
+
     free(application->mesh_references);
     application->mesh_references = NULL;
 
@@ -901,6 +915,155 @@ int application_remove_redundant_object_references(application_t* application)
 
         application->mesh_references = new_memory_block;
     }
+
+    return 1;
+}
+
+// TODO: split on several functions
+// TODO: remove duplication
+static void parse_route_map(application_t* application, FILE* file)
+{
+    char buffer[MAX_CHAR_ARRAY_SIZE];
+
+    while (fscanf(file, "%s", buffer) != EOF)
+    {
+        if (buffer[0] == ',' || buffer[strlen(buffer) - 1] != ';')
+        {
+            continue;
+        }
+
+        buffer[strlen(buffer) - 1] = '\0';
+
+        uint32_t comma_1_index = find_char_index(buffer, 0, ',');
+        uint32_t comma_2_index = find_char_index(buffer, comma_1_index + 1, ',');
+        uint32_t comma_3_index = find_char_index(buffer, comma_2_index + 1, ',');
+        uint32_t comma_4_index = find_char_index(buffer, comma_3_index + 1, ',');
+        uint32_t comma_5_index = find_char_index(buffer, comma_4_index + 1, ',');
+        uint32_t comma_6_index = find_char_index(buffer, comma_5_index + 1, ',');
+
+        if (comma_1_index == 0 || comma_2_index == 0 || comma_3_index == 0 || comma_4_index == 0 || comma_5_index == 0 || comma_6_index == 0)
+        {
+            continue;
+        }
+
+        char label[MAX_CHAR_ARRAY_SIZE];
+        strncpy(label, buffer, comma_1_index);
+        label[comma_1_index] = '\0';
+
+        char translation_x_string[MAX_CHAR_ARRAY_SIZE];
+        strncpy(translation_x_string, buffer + comma_1_index + 1, comma_2_index - comma_1_index - 1);
+        translation_x_string[comma_2_index - comma_1_index - 1] = '\0';
+
+        float translation_x;
+        if (!string_is_float(translation_x_string))
+        {
+            fprintf(stderr, "Found non-float value in translations!\n");
+            continue;
+        }
+        translation_x = atof(translation_x_string);
+
+        char translation_y_string[MAX_CHAR_ARRAY_SIZE];
+        strncpy(translation_y_string, buffer + comma_2_index + 1, comma_3_index - comma_2_index - 1);
+        translation_y_string[comma_3_index - comma_2_index - 1] = '\0';
+
+        float translation_y;
+        if (!string_is_float(translation_y_string))
+        {
+            fprintf(stderr, "Found non-float value in translations!\n");
+            continue;
+        }
+        translation_y = atof(translation_y_string);
+
+        char translation_z_string[MAX_CHAR_ARRAY_SIZE];
+        strncpy(translation_z_string, buffer + comma_3_index + 1, comma_4_index - comma_3_index - 1);
+        translation_z_string[comma_4_index - comma_3_index - 1] = '\0';
+
+        float translation_z;
+        if (!string_is_float(translation_z_string))
+        {
+            fprintf(stderr, "Found non-float value in translations!\n");
+            continue;
+        }
+        translation_z = atof(translation_z_string);
+
+        char rotation_x_string[MAX_CHAR_ARRAY_SIZE];
+        strncpy(rotation_x_string, buffer + comma_4_index + 1, comma_5_index - comma_4_index - 1);
+        rotation_x_string[comma_5_index - comma_4_index - 1] = '\0';
+
+        float rotation_x;
+        if (!string_is_float(rotation_x_string))
+        {
+            fprintf(stderr, "Found non-float value in translations!\n");
+            continue;
+        }
+        rotation_x = atof(rotation_x_string);
+
+        char rotation_y_string[MAX_CHAR_ARRAY_SIZE];
+        strncpy(rotation_y_string, buffer + comma_5_index + 1, comma_6_index - comma_5_index - 1);
+        rotation_y_string[comma_6_index - comma_5_index - 1] = '\0';
+
+        float rotation_y;
+        if (!string_is_float(rotation_y_string))
+        {
+            fprintf(stderr, "Found non-float value in translations!\n");
+            continue;
+        }
+        rotation_y = atof(rotation_y_string);
+
+        char rotation_z_string[MAX_CHAR_ARRAY_SIZE];
+        strncpy(rotation_z_string, buffer + comma_6_index + 1, strlen(buffer) - comma_6_index - 1);
+        rotation_z_string[strlen(buffer) - comma_6_index - 1] = '\0';
+
+        float rotation_z;
+        if (!string_is_float(rotation_z_string))
+        {
+            fprintf(stderr, "Found non-float value in translations!\n");
+            continue;
+        }
+        rotation_z = atof(rotation_z_string);
+
+        if (application->transformation_references != NULL)
+        {
+            transformation_reference_t* transformation_reference = &application->transformation_references[application->transformation_references_size];
+            strcpy(transformation_reference->label, label);
+            vec3_set(&transformation_reference->translation, translation_x, translation_y, translation_z);
+            vec3_set(&transformation_reference->rotation, rotation_x, rotation_y, rotation_z);
+        }
+
+        ++application->transformation_references_size;
+    }
+}
+
+int application_load_route_map(application_t* application)
+{
+    char full_file_path[MAX_CHAR_ARRAY_SIZE];
+    sprintf(full_file_path, "%s/route1.map", application->full_route_path);
+
+    FILE* file = fopen(full_file_path, "r");
+    if (file == NULL)
+    {
+        fprintf(stderr, "Failed to open file \"%s\" for reading!\n", full_file_path);
+        return 0;
+    }
+
+    parse_route_map(application, file);
+
+    application->transformation_references = malloc(application->transformation_references_size * sizeof(transformation_reference_t));
+    if (application->transformation_references == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for transformation_references!\n");
+        fclose(file);
+        file = NULL;
+        return 0;
+    }
+
+    application->transformation_references_size = 0;
+    fseek(file, 0, SEEK_SET);
+
+    parse_route_map(application, file);
+
+    fclose(file);
+    file = NULL;
 
     return 1;
 }

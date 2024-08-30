@@ -15,6 +15,8 @@ typedef struct vec3
     float z;
 } vec3_t;
 
+void vec3_set(vec3_t* vec, float x, float y, float z);
+
 typedef struct vertex
 {
     vec3_t pos;

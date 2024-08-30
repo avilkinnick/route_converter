@@ -52,6 +52,13 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    if (!application_load_route_map(&application))
+    {
+        fprintf(stderr, "Failed to load route1.map!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
     application_destroy(&application);
 
     return 0;
