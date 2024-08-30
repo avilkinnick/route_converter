@@ -6,6 +6,7 @@
 
 #include "geometry_reference.h"
 #include "mesh_reference.h"
+#include "node_reference.h"
 #include "object_reference.h"
 #include "transformation_reference.h"
 
@@ -41,6 +42,8 @@ typedef struct application
 
     transformation_reference_t* transformation_references;
     uint32_t transformation_references_size;
+    node_reference_t* node_references;
+    uint32_t node_references_size;
 } application_t;
 
 void application_destroy(application_t* application);
@@ -60,3 +63,5 @@ int application_check_texture_files_existence(application_t* application);
 int application_remove_redundant_object_references(application_t* application);
 
 int application_load_route_map(application_t* application);
+
+int application_get_node_references(application_t* application);

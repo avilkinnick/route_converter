@@ -42,6 +42,9 @@ static uint32_t find_char_index(const char* string, uint32_t offset, char ch)
 
 void application_destroy(application_t* application)
 {
+    free(application->node_references);
+    application->node_references = NULL;
+
     free(application->transformation_references);
     application->transformation_references = NULL;
 
@@ -1064,6 +1067,58 @@ int application_load_route_map(application_t* application)
 
     fclose(file);
     file = NULL;
+
+    return 1;
+}
+
+int application_get_node_references(application_t* application)
+{
+    application->node_references = malloc(application->transformation_references_size * sizeof(node_reference_t));
+    if (application->node_references == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for node_references!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->transformation_references_size; ++i)
+    {
+        const char* transformation_reference_label = application->transformation_references[i].label;
+
+        int found_mesh = 0;
+        uint32_t found_mesh_index;
+        for (uint32_t j = 0; j < application->mesh_references_size; ++j)
+        {
+            if (strcmp(transformation_reference_label, application->mesh_references[j].label) == 0)
+            {
+                found_mesh = 1;
+                found_mesh_index = j;
+                break;
+            }
+        }
+
+        if (!found_mesh)
+        {
+            continue;
+        }
+
+        int found_node = 0;
+        for (uint32_t j = 0; j < application->node_references_size; ++j)
+        {
+            if (strcmp(transformation_reference_label, application->node_references[j].label) == 0)
+            {
+                found_node = 1;
+                break;
+            }
+        }
+
+        if (!found_node)
+        {
+            node_reference_t* node_reference = &application->node_references[application->node_references_size];
+            strcpy(node_reference->label, transformation_reference_label);
+            node_reference->mesh_index = found_mesh_index;
+            ++application->node_references_size;
+        }
+    }
 
     return 1;
 }
