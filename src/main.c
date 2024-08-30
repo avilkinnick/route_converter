@@ -45,6 +45,13 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    if (!application_remove_redundant_object_references(&application))
+    {
+        fprintf(stderr, "Failed to remove redundant object references!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
     application_destroy(&application);
 
     return 0;

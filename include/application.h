@@ -5,7 +5,20 @@
 #include "defines.h"
 
 #include "geometry_reference.h"
+#include "mesh_reference.h"
 #include "object_reference.h"
+
+#include "gltf_types/accessor.h"
+#include "gltf_types/asset.h"
+#include "gltf_types/buffer.h"
+#include "gltf_types/bufferView.h"
+#include "gltf_types/image.h"
+#include "gltf_types/material.h"
+#include "gltf_types/mesh.h"
+#include "gltf_types/node.h"
+#include "gltf_types/sampler.h"
+#include "gltf_types/scene.h"
+#include "gltf_types/texture.h"
 
 typedef struct application
 {
@@ -22,6 +35,8 @@ typedef struct application
     uint32_t unique_relative_texture_paths_size;
     char (*valid_relative_texture_paths)[MAX_CHAR_ARRAY_SIZE];
     uint32_t valid_relative_texture_paths_size;
+    mesh_reference_t* mesh_references;
+    uint32_t mesh_references_size;
 } application_t;
 
 void application_destroy(application_t* application);
@@ -37,3 +52,5 @@ int application_load_models(application_t* application);
 int application_get_unique_relative_texture_paths(application_t* application);
 
 int application_check_texture_files_existence(application_t* application);
+
+int application_remove_redundant_object_references(application_t* application);

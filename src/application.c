@@ -6,7 +6,9 @@
 
 #include "cmake_defines.h"
 
+#include "mesh_reference.h"
 #include "my_math.h"
+#include "object_reference.h"
 
 static int first_char_is_slash(const char* string)
 {
@@ -29,6 +31,9 @@ static int string_is_float(const char* string)
 
 void application_destroy(application_t* application)
 {
+    free(application->mesh_references);
+    application->mesh_references = NULL;
+
     free(application->valid_relative_texture_paths);
     application->valid_relative_texture_paths = NULL;
 
@@ -803,6 +808,98 @@ int application_check_texture_files_existence(application_t* application)
         }
 
         application->valid_relative_texture_paths = new_memory_block;
+    }
+
+    return 1;
+}
+
+static int find_geometry_index(application_t* application, const char* relative_model_path, uint32_t* geometry_index)
+{
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        if (strcmp(relative_model_path, application->geometry_references[i].relative_model_path) == 0)
+        {
+            *geometry_index = i;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int find_texture_index(application_t* application, const char* relative_texture_path, uint32_t* texture_index)
+{
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        if (strcmp(relative_texture_path, application->valid_relative_texture_paths[i]) == 0)
+        {
+            *texture_index = i;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int application_remove_redundant_object_references(application_t* application)
+{
+    application->mesh_references = malloc(application->object_references_size * sizeof(mesh_reference_t));
+    if (application->mesh_references == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for mesh_references!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->object_references_size; ++i)
+    {
+        const object_reference_t* object_reference = &application->object_references[i];
+
+        uint32_t geometry_index;
+        if (!find_geometry_index(application, object_reference->relative_model_path, &geometry_index))
+        {
+            continue;
+        }
+
+        uint32_t texture_index;
+        if (!find_texture_index(application, object_reference->relative_texture_path, &texture_index))
+        {
+            continue;
+        }
+
+        int found = 0;
+        for (uint32_t j = 0; j < application->mesh_references_size; ++j)
+        {
+            if (strcmp(object_reference->label, application->mesh_references[j].label) == 0)
+            {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            mesh_reference_t* mesh_reference = &application->mesh_references[application->mesh_references_size];
+            strcpy(mesh_reference->label, object_reference->label);
+            mesh_reference->geometry_index = geometry_index;
+            mesh_reference->texture_index = texture_index;
+            mesh_reference->flags = object_reference->flags;
+            ++application->mesh_references_size;
+        }
+    }
+
+    free(application->object_references);
+    application->object_references = NULL;
+
+    if (application->mesh_references_size != application->object_references_size)
+    {
+        mesh_reference_t* new_memory_block = realloc(application->mesh_references, application->mesh_references_size * sizeof(mesh_reference_t));
+        if (new_memory_block == NULL)
+        {
+            fprintf(stderr, "Failed to reallocate memory for mesh_references!\n");
+            return 0;
+        }
+
+        application->mesh_references = new_memory_block;
     }
 
     return 1;
