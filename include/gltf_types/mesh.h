@@ -13,21 +13,17 @@ typedef enum gltf_mesh_primitive_mode
     GLTF_MESH_PRIMITIVE_MODE_TRIANGLE_FAN = 6
 } gltf_mesh_primitive_mode_t;
 
-typedef struct gltf_mesh_primitive_attributes
-{
-    uint32_t POSITION;
-    uint32_t TEXCOORD_0;
-} gltf_mesh_primitive_attributes_t;
-
-typedef struct gltf_mesh_primitive
-{
-    gltf_mesh_primitive_attributes_t attributes;
-    uint32_t indices;
-    uint32_t material;
-    gltf_mesh_primitive_mode_t mode;
-} gltf_mesh_primitive_t;
-
 typedef struct gltf_mesh
 {
-    gltf_mesh_primitive_t primitive;
+    struct primitive
+    {
+        struct attributes
+        {
+            uint32_t POSITION;
+            uint32_t TEXCOORD_0;
+        } attributes;
+        uint32_t indices;
+        uint32_t material;
+        gltf_mesh_primitive_mode_t mode;
+    } primitive;
 } gltf_mesh_t;

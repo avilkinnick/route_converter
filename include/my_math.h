@@ -21,6 +21,8 @@ typedef struct vertex
     vec2_t tex_coord;
 } vertex_t;
 
+int vertex_equal(const vertex_t* vertex_1, const vertex_t* vertex_2);
+
 typedef struct geometry
 {
     vertex_t* vertices;

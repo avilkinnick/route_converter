@@ -7,9 +7,9 @@ set(GLTF_ROUTE_DIR ${PROJECT_SOURCE_DIR}/gltf_route)
 
 configure_file(config/cmake_defines.h.in cmake_defines.h)
 
-add_executable(route_converter
-    src/main.c
+add_executable(route_converter src/main.c
     src/application.c
+    src/geometry_reference.c
     src/my_math.c
     src/gltf_types/scene.c
 )

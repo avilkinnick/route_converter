@@ -29,6 +29,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    application_load_models(&application);
+
     application_destroy(&application);
 
     return 0;
