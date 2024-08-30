@@ -1071,6 +1071,7 @@ int application_load_route_map(application_t* application)
     return 1;
 }
 
+// TODO: finish matrix
 int application_get_node_references(application_t* application)
 {
     application->node_references = malloc(application->transformation_references_size * sizeof(node_reference_t));
@@ -1116,6 +1117,16 @@ int application_get_node_references(application_t* application)
             node_reference_t* node_reference = &application->node_references[application->node_references_size];
             strcpy(node_reference->label, transformation_reference_label);
             node_reference->mesh_index = found_mesh_index;
+            
+            mat4_t translation_matrix;
+
+            // mat4_
+
+            mat4_t rotation_matrix;
+            // mat4_multiplicate(float (*left)[4], float (*right)[4], float (*out)[4])
+
+            mat4_multiplicate(translation_matrix, rotation_matrix, node_reference->matrix);
+
             ++application->node_references_size;
         }
     }

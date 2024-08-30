@@ -14,4 +14,6 @@ add_executable(route_converter src/main.c
     src/gltf_types/scene.c
 )
 
+target_link_libraries(route_converter PUBLIC m)
+
 target_include_directories(route_converter PUBLIC ${PROJECT_BINARY_DIR} include)
