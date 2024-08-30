@@ -6,7 +6,6 @@
 
 #include "cmake_defines.h"
 
-#include "geometry_reference.h"
 #include "my_math.h"
 
 static int first_char_is_slash(const char* string)
@@ -30,6 +29,12 @@ static int string_is_float(const char* string)
 
 void application_destroy(application_t* application)
 {
+    free(application->valid_relative_texture_paths);
+    application->valid_relative_texture_paths = NULL;
+
+    free(application->unique_relative_texture_paths);
+    application->unique_relative_texture_paths = NULL;
+
     for (uint32_t i = 0; i < application->geometry_references_size; ++i)
     {
         geometry_reference_destroy(&application->geometry_references[i]);
@@ -695,6 +700,9 @@ int application_load_models(application_t* application)
         }
     }
 
+    free(application->unique_relative_model_paths);
+    application->unique_relative_model_paths = NULL;
+
     if (application->geometry_references_size != application->unique_relative_model_paths_size)
     {
         geometry_reference_t* new_memory_block = realloc(application->geometry_references, application->geometry_references_size * sizeof(geometry_reference_t));
@@ -703,6 +711,98 @@ int application_load_models(application_t* application)
             fprintf(stderr, "Failed to reallocate memory for geometry_references!\n");
             return 0;
         }
+
+        application->geometry_references = new_memory_block;
+    }
+
+    return 1;
+}
+
+int application_get_unique_relative_texture_paths(application_t* application)
+{
+    application->unique_relative_texture_paths = malloc(application->object_references_size * MAX_CHAR_ARRAY_SIZE * sizeof(char));
+    if (application->unique_relative_texture_paths == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for unique_relative_texture_paths!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->object_references_size; ++i)
+    {
+        const char* object_reference_relative_texture_path = application->object_references[i].relative_texture_path;
+
+        int found = 0;
+        for (uint32_t j = 0; j < application->unique_relative_texture_paths_size; ++j)
+        {
+            const char* unique_relative_texture_path = application->unique_relative_texture_paths[j];
+
+            if (strcmp(object_reference_relative_texture_path, unique_relative_texture_path) == 0)
+            {
+                found = 1;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            strcpy(application->unique_relative_texture_paths[application->unique_relative_texture_paths_size], object_reference_relative_texture_path);
+            ++application->unique_relative_texture_paths_size;
+        }
+    }
+
+    if (application->unique_relative_texture_paths_size != application->object_references_size)
+    {
+        char (*new_memory_block)[MAX_CHAR_ARRAY_SIZE] = realloc(application->unique_relative_texture_paths, application->unique_relative_texture_paths_size * MAX_CHAR_ARRAY_SIZE * sizeof(char));
+        if (new_memory_block == NULL)
+        {
+            fprintf(stderr, "Failed to reallocate memory for unique_relative_texture_paths!\n");
+            return 0;
+        }
+
+        application->unique_relative_texture_paths = new_memory_block;
+    }
+
+    return 1;
+}
+
+int application_check_texture_files_existence(application_t* application)
+{
+    application->valid_relative_texture_paths = malloc(application->unique_relative_texture_paths_size * MAX_CHAR_ARRAY_SIZE * sizeof(char));
+    if (application->valid_relative_texture_paths == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for valid_relative_texture_paths!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->unique_relative_texture_paths_size; ++i)
+    {
+        char full_file_path[MAX_CHAR_ARRAY_SIZE];
+        sprintf(full_file_path, "%s%s", application->full_route_path, application->unique_relative_texture_paths[i]);
+
+        FILE* file = fopen(full_file_path, "r");
+        if (file != NULL)
+        {
+            fclose(file);
+            file = NULL;
+
+            strcpy(application->valid_relative_texture_paths[application->valid_relative_texture_paths_size], application->unique_relative_texture_paths[i]);
+            ++application->valid_relative_texture_paths_size;
+        }
+    }
+
+    free(application->unique_relative_texture_paths);
+    application->unique_relative_texture_paths = NULL;
+
+    if (application->valid_relative_texture_paths_size != application->unique_relative_texture_paths_size)
+    {
+        char (*new_memory_block)[MAX_CHAR_ARRAY_SIZE] = realloc(application->valid_relative_texture_paths, application->valid_relative_texture_paths_size * MAX_CHAR_ARRAY_SIZE * sizeof(char));
+        if (new_memory_block == NULL)
+        {
+            fprintf(stderr, "Failed to reallocate memory for valid_relative_texture_paths!\n");
+            return 0;
+        }
+
+        application->valid_relative_texture_paths = new_memory_block;
     }
 
     return 1;

@@ -31,6 +31,20 @@ int main(int argc, char* argv[])
 
     application_load_models(&application);
 
+    if (!application_get_unique_relative_texture_paths(&application))
+    {
+        fprintf(stderr, "Failed to get unique relative texture paths!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
+    if (!application_check_texture_files_existence(&application))
+    {
+        fprintf(stderr, "Failed to check texture files existence!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
     application_destroy(&application);
 
     return 0;
