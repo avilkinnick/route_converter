@@ -59,6 +59,13 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    if (!application_get_node_references(&application))
+    {
+        fprintf(stderr, "Failed to get node references!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
     application_destroy(&application);
 
     return 0;

@@ -6,7 +6,11 @@
 
 #include "cmake_defines.h"
 
+#include "gltf_types/accessor.h"
+#include "gltf_types/bufferView.h"
+#include "mesh_reference.h"
 #include "my_math.h"
+#include "transformation_reference.h"
 
 static int first_char_is_slash(const char* string)
 {
@@ -1083,7 +1087,8 @@ int application_get_node_references(application_t* application)
 
     for (uint32_t i = 0; i < application->transformation_references_size; ++i)
     {
-        const char* transformation_reference_label = application->transformation_references[i].label;
+        const transformation_reference_t* transformation_reference = &application->transformation_references[i];
+        const char* transformation_reference_label = transformation_reference->label;
 
         int found_mesh = 0;
         uint32_t found_mesh_index;
@@ -1117,18 +1122,165 @@ int application_get_node_references(application_t* application)
             node_reference_t* node_reference = &application->node_references[application->node_references_size];
             strcpy(node_reference->label, transformation_reference_label);
             node_reference->mesh_index = found_mesh_index;
-            
-            mat4_t translation_matrix;
 
-            // mat4_
+            const vec3_t* translation = &transformation_reference->translation;
+            const vec3_t* rotation = &transformation_reference->rotation;
+
+            mat4_t rotation_x_matrix;
+            mat4_create_identity_matrix(rotation_x_matrix);
+            mat4_create_rotation_x_matrix(rotation->y, rotation_x_matrix);
+
+            mat4_t rotation_y_matrix;
+            mat4_create_identity_matrix(rotation_y_matrix);
+            mat4_create_rotation_y_matrix(rotation->y, rotation_y_matrix);
+
+            mat4_t rotation_z_matrix;
+            mat4_create_identity_matrix(rotation_z_matrix);
+            mat4_create_rotation_y_matrix(rotation->z, rotation_z_matrix);
+
+            mat4_t rotation_xy_matrix;
+            mat4_multiplicate(rotation_x_matrix, rotation_y_matrix, rotation_xy_matrix);
 
             mat4_t rotation_matrix;
-            // mat4_multiplicate(float (*left)[4], float (*right)[4], float (*out)[4])
+            mat4_multiplicate(rotation_xy_matrix, rotation_z_matrix, rotation_matrix);
+
+            mat4_t translation_matrix;
+            mat4_create_identity_matrix(translation_matrix);
+            mat4_create_translation_matrix(translation->x, translation->y, translation->z, translation_matrix);
 
             mat4_multiplicate(translation_matrix, rotation_matrix, node_reference->matrix);
 
             ++application->node_references_size;
         }
+    }
+
+    free(application->transformation_references);
+    application->transformation_references = NULL;
+
+    return 1;
+}
+
+int application_fill_gltf_data(application_t* application)
+{
+    application->gltf_asset.version = "2.0";
+
+    sprintf(application->gltf_buffer.uri, "%s.bin", application->route_name);
+
+    uint32_t total_vertices_size = 0;
+    uint32_t total_indices_size = 0;
+    uint32_t total_byte_length = 0;
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        const geometry_t* geometry = application->geometry_references[i].geometry;
+
+        total_vertices_size += geometry->vertices_size;
+        total_indices_size += geometry->indices_size;
+        total_byte_length += geometry->vertices_size * (sizeof(vec3_t) + sizeof(vec2_t));
+        total_byte_length += geometry->indices_size * sizeof(uint32_t);
+    }
+    application->gltf_buffer.byteLength = total_byte_length;
+
+    application->gltf_bufferViews[0].buffer = 0;
+    application->gltf_bufferViews[0].byteOffset = 0;
+    application->gltf_bufferViews[0].byteLength = total_vertices_size * sizeof(vec3_t);
+    application->gltf_bufferViews[0].byteStride = sizeof(vec3_t) + sizeof(vec2_t);
+    application->gltf_bufferViews[0].target = GLTF_BUFFER_VIEW_TARGET_ARRAY_BUFFER;
+
+    application->gltf_bufferViews[1].buffer = 0;
+    application->gltf_bufferViews[1].byteOffset = sizeof(vec3_t);
+    application->gltf_bufferViews[1].byteLength = total_vertices_size * sizeof(vec2_t);
+    application->gltf_bufferViews[1].byteStride = sizeof(vec3_t) + sizeof(vec2_t);
+    application->gltf_bufferViews[1].target = GLTF_BUFFER_VIEW_TARGET_ARRAY_BUFFER;
+
+    application->gltf_bufferViews[2].buffer = 0;
+    application->gltf_bufferViews[2].byteOffset = total_vertices_size * (sizeof(vec3_t) + sizeof(vec2_t));
+    application->gltf_bufferViews[2].byteLength = total_indices_size * sizeof(uint32_t);
+    application->gltf_bufferViews[2].byteStride = 0;
+    application->gltf_bufferViews[2].target = GLTF_BUFFER_VIEW_TARGET_ELEMENT_ARRAY_BUFFER;
+
+    application->gltf_accessors = malloc(application->geometry_references_size * 3 * sizeof(gltf_accessor_t));
+    if (application->gltf_accessors == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_accessors!\n");
+        return 0;
+    }
+
+    total_vertices_size = 0;
+    total_indices_size = 0;
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        const geometry_t* geometry = application->geometry_references[i].geometry;
+        
+        gltf_accessor_t* position_accessor = &application->gltf_accessors[i * 3];
+        gltf_accessor_t* tex_coords_accessor = &application->gltf_accessors[i * 3 + 1];
+        gltf_accessor_t* indices_accessor = &application->gltf_accessors[i * 3 + 2];
+
+        vec3_t max_pos_values = geometry->vertices[0].pos;
+        vec3_t min_pos_values = geometry->vertices[0].pos;
+        vec2_t max_tex_coord_values = geometry->vertices[0].tex_coord;
+        vec2_t min_tex_coord_values = geometry->vertices[0].tex_coord;
+
+        for (uint32_t j = 1; j < geometry->vertices_size; ++j)
+        {
+            if (geometry->vertices[j].pos.x > max_pos_values.x)
+            {
+                max_pos_values.x = geometry->vertices[j].pos.x;
+            }
+
+            if (geometry->vertices[j].pos.y > max_pos_values.y)
+            {
+                max_pos_values.y = geometry->vertices[j].pos.y;
+            }
+
+            if (geometry->vertices[j].pos.z > max_pos_values.z)
+            {
+                max_pos_values.z = geometry->vertices[j].pos.z;
+            }
+
+            if (geometry->vertices[j].pos.x < min_pos_values.x)
+            {
+                min_pos_values.x = geometry->vertices[j].pos.x;
+            }
+
+            if (geometry->vertices[j].pos.y < max_pos_values.y)
+            {
+                min_pos_values.y = geometry->vertices[j].pos.y;
+            }
+
+            if (geometry->vertices[j].pos.z < max_pos_values.z)
+            {
+                min_pos_values.z = geometry->vertices[j].pos.z;
+            }
+        }
+
+        position_accessor->bufferView = 0;
+        position_accessor->byteOffset = total_vertices_size * sizeof(vec3_t);
+        position_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_FLOAT;
+        position_accessor->count = geometry->vertices_size;
+        position_accessor->type = GLTF_ACCESSOR_TYPE_VEC3;
+        position_accessor->max_floats;
+        position_accessor->min_floats;
+
+        tex_coords_accessor->bufferView = 1;
+        tex_coords_accessor->byteOffset = total_vertices_size * sizeof(vec2_t);
+        tex_coords_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_FLOAT;
+        tex_coords_accessor->count = geometry->vertices_size;
+        tex_coords_accessor->type = GLTF_ACCESSOR_TYPE_VEC2;
+        tex_coords_accessor->max_floats;
+        tex_coords_accessor->min_floats;
+
+        indices_accessor->bufferView = 2;
+        indices_accessor->byteOffset = total_indices_size * sizeof(uint32_t);
+        indices_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_UNSIGNED_INT;
+        indices_accessor->count = geometry->indices_size;
+        indices_accessor->type = GLTF_ACCESSOR_TYPE_SCALAR;
+        indices_accessor->max_integer;
+        indices_accessor->min_integer;
+
+        total_vertices_size += geometry->vertices_size;
+        total_indices_size += geometry->indices_size;
     }
 
     return 1;

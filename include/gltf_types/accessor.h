@@ -27,8 +27,8 @@ typedef struct gltf_accessor
     gltf_accessor_componentType_t componentType;
     uint32_t count;
     const char* type;
-    int32_t max_integers[16];
-    float max_floats[16];
-    int32_t min_integers[16];
-    float min_floats[16];
+    int32_t max_integer;
+    float max_floats[3];
+    int32_t min_integer;
+    float min_floats[3];
 } gltf_accessor_t;
