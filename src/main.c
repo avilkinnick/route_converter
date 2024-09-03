@@ -66,6 +66,20 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    if (!application_fill_gltf_data(&application))
+    {
+        fprintf(stderr, "Failed to fill gltf data!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
+    if (!application_generate_gltf_files(&application))
+    {
+        fprintf(stderr, "Failed to generate gltf files!\n");
+        application_destroy(&application);
+        return 1;
+    }
+
     application_destroy(&application);
 
     return 0;

@@ -1,13 +1,22 @@
 #include "application.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "cmake_defines.h"
 
 #include "gltf_types/accessor.h"
 #include "gltf_types/bufferView.h"
+#include "gltf_types/image.h"
+#include "gltf_types/material.h"
+#include "gltf_types/mesh.h"
+#include "gltf_types/node.h"
+#include "gltf_types/sampler.h"
+#include "gltf_types/scene.h"
+#include "gltf_types/texture.h"
 #include "mesh_reference.h"
 #include "my_math.h"
 #include "transformation_reference.h"
@@ -44,8 +53,37 @@ static uint32_t find_char_index(const char* string, uint32_t offset, char ch)
     return 0;
 }
 
+static void replace_slashes_with_underscores(char string[])
+{
+    for (uint32_t i = 0; i < strlen(string); ++i)
+    {
+        if (string[i] == '/' || string[i] == '\\')
+        {
+            string[i] = '_';
+        }
+    }
+}
+
 void application_destroy(application_t* application)
 {
+    free(application->gltf_nodes);
+    application->gltf_nodes = NULL;
+
+    free(application->gltf_meshes);
+    application->gltf_meshes = NULL;
+
+    free(application->gltf_materials);
+    application->gltf_materials = NULL;
+
+    free(application->gltf_textures);
+    application->gltf_textures = NULL;
+
+    free(application->gltf_images);
+    application->gltf_images = NULL;
+
+    free(application->gltf_accessors);
+    application->gltf_accessors = NULL;
+
     free(application->node_references);
     application->node_references = NULL;
 
@@ -1253,6 +1291,26 @@ int application_fill_gltf_data(application_t* application)
             {
                 min_pos_values.z = geometry->vertices[j].pos.z;
             }
+
+            if (geometry->vertices[j].tex_coord.x > max_tex_coord_values.x)
+            {
+                max_tex_coord_values.x = geometry->vertices[j].tex_coord.x;
+            }
+
+            if (geometry->vertices[j].tex_coord.y > max_tex_coord_values.y)
+            {
+                max_tex_coord_values.y = geometry->vertices[j].tex_coord.y;
+            }
+
+            if (geometry->vertices[j].tex_coord.x < min_tex_coord_values.x)
+            {
+                min_tex_coord_values.x = geometry->vertices[j].tex_coord.x;
+            }
+
+            if (geometry->vertices[j].tex_coord.y < min_tex_coord_values.y)
+            {
+                min_tex_coord_values.y = geometry->vertices[j].tex_coord.y;
+            }
         }
 
         position_accessor->bufferView = 0;
@@ -1260,28 +1318,542 @@ int application_fill_gltf_data(application_t* application)
         position_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_FLOAT;
         position_accessor->count = geometry->vertices_size;
         position_accessor->type = GLTF_ACCESSOR_TYPE_VEC3;
-        position_accessor->max_floats;
-        position_accessor->min_floats;
+        position_accessor->max_floats[0] = max_pos_values.x;
+        position_accessor->max_floats[1] = max_pos_values.y;
+        position_accessor->max_floats[2] = max_pos_values.z;
+        position_accessor->min_floats[0] = min_pos_values.x;
+        position_accessor->min_floats[1] = min_pos_values.y;
+        position_accessor->min_floats[2] = min_pos_values.z;
 
         tex_coords_accessor->bufferView = 1;
         tex_coords_accessor->byteOffset = total_vertices_size * sizeof(vec2_t);
         tex_coords_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_FLOAT;
         tex_coords_accessor->count = geometry->vertices_size;
         tex_coords_accessor->type = GLTF_ACCESSOR_TYPE_VEC2;
-        tex_coords_accessor->max_floats;
-        tex_coords_accessor->min_floats;
+        tex_coords_accessor->max_floats[0] = max_tex_coord_values.x;
+        tex_coords_accessor->max_floats[1] = max_tex_coord_values.y;
+        tex_coords_accessor->min_floats[0] = min_tex_coord_values.x;
+        tex_coords_accessor->min_floats[1] = min_tex_coord_values.y;
 
         indices_accessor->bufferView = 2;
         indices_accessor->byteOffset = total_indices_size * sizeof(uint32_t);
         indices_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_UNSIGNED_INT;
         indices_accessor->count = geometry->indices_size;
         indices_accessor->type = GLTF_ACCESSOR_TYPE_SCALAR;
-        indices_accessor->max_integer;
-        indices_accessor->min_integer;
+        indices_accessor->max_integer = geometry->indices_size - 1;
+        indices_accessor->min_integer = 0;
 
         total_vertices_size += geometry->vertices_size;
         total_indices_size += geometry->indices_size;
     }
+
+    application->gltf_images = malloc(application->valid_relative_texture_paths_size * sizeof(gltf_image_t));
+    if (application->gltf_images == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_images!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        strncpy(application->gltf_images[i].uri, application->valid_relative_texture_paths[i] + 1, strlen(application->valid_relative_texture_paths[i]) - 1);
+        application->gltf_images[i].uri[strlen(application->valid_relative_texture_paths[i]) - 1] = '\0';
+        replace_slashes_with_underscores(application->gltf_images[i].uri);
+    }
+
+    application->gltf_sampler.magFilter = GLTF_SAMPLER_FILTER_LINEAR;
+    application->gltf_sampler.minFilter = GLTF_SAMPLER_FILTER_LINEAR_MIPMAP_LINEAR;
+    application->gltf_sampler.wrapS = GLTF_SAMPLER_WRAPPING_MODE_REPEAT;
+    application->gltf_sampler.wrapT = GLTF_SAMPLER_WRAPPING_MODE_REPEAT;
+
+    application->gltf_textures = malloc(application->valid_relative_texture_paths_size * sizeof(gltf_texture_t));
+    if (application->gltf_textures == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_textures!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        application->gltf_textures[i].sampler = 0;
+        application->gltf_textures[i].source = i;
+    }
+
+    application->gltf_materials = malloc(application->valid_relative_texture_paths_size * sizeof(gltf_material_t));
+    if (application->gltf_materials == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_materials!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        application->gltf_materials[i].pbrMetallicRoughness.baseColorTexture.index = i;
+        application->gltf_materials[i].pbrMetallicRoughness.baseColorTexture.texCoord = 0;
+        application->gltf_materials[i].alphaMode = GLTF_MATERIAL_ALPHA_MODE_MASK;
+    }
+
+    application->gltf_meshes = malloc(application->mesh_references_size * sizeof(gltf_mesh_t));
+    if (application->gltf_meshes == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_meshes!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->mesh_references_size; ++i)
+    {
+        application->gltf_meshes[i].primitive.attributes.POSITION = application->mesh_references[i].geometry_index * 3;
+        application->gltf_meshes[i].primitive.attributes.TEXCOORD_0 = application->mesh_references[i].geometry_index * 3 + 1;
+        application->gltf_meshes[i].primitive.indices = application->mesh_references[i].geometry_index * 3 + 2;
+        application->gltf_meshes[i].primitive.material = application->mesh_references[i].texture_index;
+        application->gltf_meshes[i].primitive.mode = GLTF_MESH_PRIMITIVE_MODE_TRIANGLES;
+    }
+
+    application->gltf_nodes = malloc(application->node_references_size * sizeof(gltf_node_t));
+    if (application->gltf_nodes == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_nodes!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->node_references_size; ++i)
+    {
+        for (uint32_t j = 0; j < 4; ++j)
+        {
+            for (uint32_t k = 0; k < 4; ++k)
+            {
+                application->gltf_nodes[i].matrix[k * 4 + j] = application->node_references[i].matrix[j][k];
+            }
+        }
+        application->gltf_nodes[i].mesh = application->node_references[i].mesh_index;
+        strcpy(application->gltf_nodes[i].name, application->node_references[i].label);
+    }
+
+    return 1;
+}
+
+int application_generate_gltf_files(application_t* application)
+{
+    const char* full_gltf_route_path = GLTF_ROUTE_DIR;
+
+    char full_gltf_file_path[MAX_CHAR_ARRAY_SIZE];
+    sprintf(full_gltf_file_path, "%s/%s.gltf", full_gltf_route_path, application->route_name);
+
+    char full_bin_file_path[MAX_CHAR_ARRAY_SIZE];
+    sprintf(full_bin_file_path, "%s/%s.bin", full_gltf_route_path, application->route_name);
+
+    FILE* bin_file = fopen(full_bin_file_path, "wb");
+    if (bin_file == NULL)
+    {
+        fprintf(stderr, "Failed to open .bin file for writing!\n");
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        const geometry_t* geometry = application->geometry_references[i].geometry;
+
+        fwrite(geometry->vertices, sizeof(vertex_t), geometry->vertices_size, bin_file);
+    }
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        const geometry_t* geometry = application->geometry_references[i].geometry;
+
+        fwrite(geometry->indices, sizeof(uint32_t), geometry->indices_size, bin_file);
+    }
+
+    fclose(bin_file);
+    bin_file = NULL;
+
+    // for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    // {
+    //     char full_dmd_texture_path[MAX_CHAR_ARRAY_SIZE];
+    //     sprintf(full_dmd_texture_path, "%s%s", application->full_route_path, application->valid_relative_texture_paths[i]);
+
+    //     char relative_texture_path[MAX_CHAR_ARRAY_SIZE];
+    //     strcpy(relative_texture_path, application->valid_relative_texture_paths[i]);
+    //     replace_slashes_with_underscores(relative_texture_path);
+    //     relative_texture_path[0] = '/';
+
+    //     char full_gltf_texture_path[MAX_CHAR_ARRAY_SIZE];
+    //     sprintf(full_gltf_texture_path, GLTF_ROUTE_DIR "%s", relative_texture_path);
+
+    //     FILE* dmd_texture_file = fopen(full_dmd_texture_path, "rb");
+    //     if (dmd_texture_file == NULL)
+    //     {
+    //         fprintf(stderr, "Failed to open file \"%s\" for reading!\n", full_dmd_texture_path);
+    //         return 0;
+    //     }
+
+    //     fseek(dmd_texture_file, 0, SEEK_END);
+    //     uint32_t byte_length = ftell(dmd_texture_file);
+
+    //     fseek(dmd_texture_file, 0, SEEK_SET);
+
+    //     FILE* gltf_texture_file = fopen(full_gltf_texture_path, "wb");
+    //     if (gltf_texture_file == NULL)
+    //     {
+    //         fprintf(stderr, "Failed to open file \"%s\" for writing!\n", full_gltf_texture_path);
+    //         fclose(dmd_texture_file);
+    //         dmd_texture_file = NULL;
+    //         return 0;
+    //     }
+
+    //     char* buffer = malloc(byte_length);
+    //     if (buffer == NULL)
+    //     {
+    //         fprintf(stderr, "Failed to allocate memory for buffer!\n");
+    //         return 0;
+    //     }
+
+    //     fread(buffer, 1, byte_length, dmd_texture_file);
+    //     fwrite(buffer, 1, byte_length, gltf_texture_file);
+
+    //     fclose(dmd_texture_file);
+    //     dmd_texture_file = NULL;
+
+    //     fclose(gltf_texture_file);
+    //     gltf_texture_file = NULL;
+    // }
+
+    FILE* gltf_file = fopen(full_gltf_file_path, "w");
+    if (gltf_file == NULL)
+    {
+        fprintf(stderr, "Failed to open .gltf file for writing!\n");
+        return 0;
+    }
+
+    fprintf(
+        gltf_file,
+        "{\n"
+        "    \"asset\": {\n"
+        "        \"version\": \"%s\"\n"
+        "    },\n",
+        application->gltf_asset.version
+    );
+
+    fprintf(
+        gltf_file,
+        "    \"buffers\": [\n"
+        "        {\n"
+        "            \"byteLength\": %u,\n"
+        "            \"uri\": \"%s\"\n"
+        "        }\n"
+        "    ],\n",
+        application->gltf_buffer.byteLength,
+        application->gltf_buffer.uri
+    );
+
+    fprintf(
+        gltf_file,
+        "    \"bufferViews\": [\n"
+        "        {\n"
+        "            \"buffer\": %u,\n"
+        "            \"byteLength\": %u,\n"
+        "            \"byteOffset\": %u,\n"
+        "            \"byteStride\": %u,\n"
+        "            \"target\": %u\n"
+        "        },\n"
+        "        {\n"
+        "            \"buffer\": %u,\n"
+        "            \"byteLength\": %u,\n"
+        "            \"byteOffset\": %u,\n"
+        "            \"byteStride\": %u,\n"
+        "            \"target\": %u\n"
+        "        },\n"
+        "        {\n"
+        "            \"buffer\": %u,\n"
+        "            \"byteLength\": %u,\n"
+        "            \"byteOffset\": %u,\n"
+        "            \"target\": %u\n"
+        "        }\n"
+        "    ],\n",
+        application->gltf_bufferViews[0].buffer,
+        application->gltf_bufferViews[0].byteLength,
+        application->gltf_bufferViews[0].byteOffset,
+        application->gltf_bufferViews[0].byteStride,
+        application->gltf_bufferViews[0].target,
+        application->gltf_bufferViews[1].buffer,
+        application->gltf_bufferViews[1].byteLength,
+        application->gltf_bufferViews[1].byteOffset,
+        application->gltf_bufferViews[1].byteStride,
+        application->gltf_bufferViews[1].target,
+        application->gltf_bufferViews[2].buffer,
+        application->gltf_bufferViews[2].byteLength,
+        application->gltf_bufferViews[2].byteOffset,
+        application->gltf_bufferViews[2].target
+    );
+
+    fprintf(
+        gltf_file,
+        "    \"accessors\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"bufferView\": %u,\n"
+            "            \"byteOffset\": %u,\n"
+            "            \"componentType\": %u,\n"
+            "            \"count\": %u,\n"
+            "            \"max\": [\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f\n"
+            "            ],\n"
+            "            \"min\": [\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f\n"
+            "            ],\n"
+            "            \"type\": \"%s\"\n"
+            "        },\n"
+            "        {\n"
+            "            \"bufferView\": %u,\n"
+            "            \"byteOffset\": %u,\n"
+            "            \"componentType\": %u,\n"
+            "            \"count\": %u,\n"
+            "            \"max\": [\n"
+            "                %f,\n"
+            "                %f\n"
+            "            ],\n"
+            "            \"min\": [\n"
+            "                %f,\n"
+            "                %f\n"
+            "            ],\n"
+            "            \"type\": \"%s\"\n"
+            "        },\n"
+            "        {\n"
+            "            \"bufferView\": %u,\n"
+            "            \"byteOffset\": %u,\n"
+            "            \"componentType\": %u,\n"
+            "            \"count\": %u,\n"
+            "            \"max\": [\n"
+            "                %u\n"
+            "            ],\n"
+            "            \"min\": [\n"
+            "                %u\n"
+            "            ],\n"
+            "            \"type\": \"%s\"\n"
+            "        }%s",
+            application->gltf_accessors[i * 3].bufferView,
+            application->gltf_accessors[i * 3].byteOffset,
+            application->gltf_accessors[i * 3].componentType,
+            application->gltf_accessors[i * 3].count,
+            application->gltf_accessors[i * 3].max_floats[0],
+            application->gltf_accessors[i * 3].max_floats[1],
+            application->gltf_accessors[i * 3].max_floats[2],
+            application->gltf_accessors[i * 3].min_floats[0],
+            application->gltf_accessors[i * 3].min_floats[1],
+            application->gltf_accessors[i * 3].min_floats[2],
+            application->gltf_accessors[i * 3].type,
+            application->gltf_accessors[i * 3 + 1].bufferView,
+            application->gltf_accessors[i * 3 + 1].byteOffset,
+            application->gltf_accessors[i * 3 + 1].componentType,
+            application->gltf_accessors[i * 3 + 1].count,
+            application->gltf_accessors[i * 3 + 1].max_floats[0],
+            application->gltf_accessors[i * 3 + 1].max_floats[1],
+            application->gltf_accessors[i * 3 + 1].min_floats[0],
+            application->gltf_accessors[i * 3 + 1].min_floats[1],
+            application->gltf_accessors[i * 3 + 1].type,
+            application->gltf_accessors[i * 3 + 2].bufferView,
+            application->gltf_accessors[i * 3 + 2].byteOffset,
+            application->gltf_accessors[i * 3 + 2].componentType,
+            application->gltf_accessors[i * 3 + 2].count,
+            application->gltf_accessors[i * 3 + 2].max_integer,
+            application->gltf_accessors[i * 3 + 2].min_integer,
+            application->gltf_accessors[i * 3 + 2].type,
+            (i == application->geometry_references_size - 1) ? "\n" : ",\n"
+        );
+    }
+
+    fprintf(
+        gltf_file,
+        "    ],\n"
+        "    \"images\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"uri\": \"%s\"\n"
+            "        }%s",
+            application->gltf_images[i].uri,
+            (i == application->valid_relative_texture_paths_size - 1) ? "\n" : ",\n"
+        );
+    }
+
+    fprintf(
+        gltf_file,
+        "    ],\n"
+        "    \"samplers\": [\n"
+        "        {\n"
+        "            \"magFilter\": %u,\n"
+        "            \"minFilter\": %u,\n"
+        "            \"wrapS\": %u,\n"
+        "            \"wrapT\": %u\n"
+        "        }\n"
+        "    ],\n",
+        application->gltf_sampler.magFilter,
+        application->gltf_sampler.minFilter,
+        application->gltf_sampler.wrapS,
+        application->gltf_sampler.wrapT
+    );
+
+    fprintf(
+        gltf_file,
+        "    \"textures\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"sampler\": 0,\n"
+            "            \"source\": %u\n"
+            "        }%s",
+            i,
+            (i == application->valid_relative_texture_paths_size - 1) ? "\n" : ",\n"
+        );
+    }
+
+    fprintf(
+        gltf_file,
+        "    ],\n"
+        "    \"materials\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->valid_relative_texture_paths_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"pbrMetallicRoughness\": {\n"
+            "                \"baseColorTexture\": {\n"
+            "                    \"index\": %u,\n"
+            "                    \"texCoord\": 0\n"
+            "                }\n"
+            "            }\n"
+            "        }%s",
+            i,
+            (i == application->valid_relative_texture_paths_size - 1) ? "\n" : ",\n"
+        );
+    }
+
+    fprintf(
+        gltf_file,
+        "    ],\n"
+        "    \"meshes\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->mesh_references_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"primitives\": [\n"
+            "                {\n"
+            "                    \"attributes\": {\n"
+            "                        \"POSITION\": %u,\n"
+            "                        \"TEXCOORD_0\": %u\n"
+            "                    },\n"
+            "                    \"indices\": %u,\n"
+            "                    \"material\": %u,\n"
+            "                    \"mode\": %u\n"
+            "                }\n"
+            "            ]\n"
+            "        }%s",
+            application->gltf_meshes[i].primitive.attributes.POSITION,
+            application->gltf_meshes[i].primitive.attributes.TEXCOORD_0,
+            application->gltf_meshes[i].primitive.indices,
+            application->gltf_meshes[i].primitive.material,
+            application->gltf_meshes[i].primitive.mode,
+            (i == application->mesh_references_size - 1) ? "\n" : ",\n"
+        );
+    }
+
+    fprintf(
+        gltf_file,
+        "    ],\n"
+        "    \"nodes\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->node_references_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"name\": \"%s\",\n"
+            "            \"mesh\": %u,\n"
+            "            \"matrix\": [\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f,\n"
+            "                %f\n"
+            "            ]\n"
+            "        }%s",
+            application->gltf_nodes[i].name,
+            application->gltf_nodes[i].mesh,
+            application->gltf_nodes[i].matrix[0],
+            application->gltf_nodes[i].matrix[1],
+            application->gltf_nodes[i].matrix[2],
+            application->gltf_nodes[i].matrix[3],
+            application->gltf_nodes[i].matrix[4],
+            application->gltf_nodes[i].matrix[5],
+            application->gltf_nodes[i].matrix[6],
+            application->gltf_nodes[i].matrix[7],
+            application->gltf_nodes[i].matrix[8],
+            application->gltf_nodes[i].matrix[9],
+            application->gltf_nodes[i].matrix[10],
+            application->gltf_nodes[i].matrix[11],
+            application->gltf_nodes[i].matrix[12],
+            application->gltf_nodes[i].matrix[13],
+            application->gltf_nodes[i].matrix[14],
+            application->gltf_nodes[i].matrix[15],
+            (i == application->node_references_size - 1) ? "\n" : ",\n"
+        );
+    }
+
+    fprintf(
+        gltf_file,
+        "    ],\n"
+        "    \"scenes\": [\n"
+        "        {\n"
+        "            \"name\": \"scene\",\n"
+        "            \"nodes\": [\n"
+    );
+
+    for (uint32_t i = 0; i < application->node_references_size; ++i)
+    {
+        fprintf(gltf_file, "                %u%s", i, (i == application->node_references_size - 1) ? "\n" : ",\n");
+    }
+
+    fprintf(
+        gltf_file,
+        "            ]\n"
+        "        }\n"
+        "    ],\n"
+        "    \"scene\": 0\n"
+        "}\n"
+    );
 
     return 1;
 }

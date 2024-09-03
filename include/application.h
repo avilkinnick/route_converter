@@ -49,6 +49,12 @@ typedef struct application
     gltf_buffer_t gltf_buffer;
     gltf_bufferView_t gltf_bufferViews[3];
     gltf_accessor_t* gltf_accessors;
+    gltf_image_t* gltf_images;
+    gltf_sampler_t gltf_sampler;
+    gltf_texture_t* gltf_textures;
+    gltf_material_t* gltf_materials;
+    gltf_mesh_t* gltf_meshes;
+    gltf_node_t* gltf_nodes;
 } application_t;
 
 void application_destroy(application_t* application);
@@ -72,3 +78,5 @@ int application_load_route_map(application_t* application);
 int application_get_node_references(application_t* application);
 
 int application_fill_gltf_data(application_t* application);
+
+int application_generate_gltf_files(application_t* application);
