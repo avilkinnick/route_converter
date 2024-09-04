@@ -47,7 +47,7 @@ typedef struct application
 
     gltf_asset_t gltf_asset;
     gltf_buffer_t gltf_buffer;
-    gltf_bufferView_t gltf_bufferViews[3];
+    gltf_bufferView_t* gltf_bufferViews;
     gltf_accessor_t* gltf_accessors;
     gltf_image_t* gltf_images;
     gltf_sampler_t gltf_sampler;

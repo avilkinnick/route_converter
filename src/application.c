@@ -84,6 +84,9 @@ void application_destroy(application_t* application)
     free(application->gltf_accessors);
     application->gltf_accessors = NULL;
 
+    free(application->gltf_bufferViews);
+    application->gltf_bufferViews = NULL;
+
     free(application->node_references);
     application->node_references = NULL;
 
@@ -1145,51 +1148,38 @@ int application_get_node_references(application_t* application)
             continue;
         }
 
-        int found_node = 0;
-        for (uint32_t j = 0; j < application->node_references_size; ++j)
-        {
-            if (strcmp(transformation_reference_label, application->node_references[j].label) == 0)
-            {
-                found_node = 1;
-                break;
-            }
-        }
+        node_reference_t* node_reference = &application->node_references[application->node_references_size];
+        strcpy(node_reference->label, transformation_reference_label);
+        node_reference->mesh_index = found_mesh_index;
 
-        if (!found_node)
-        {
-            node_reference_t* node_reference = &application->node_references[application->node_references_size];
-            strcpy(node_reference->label, transformation_reference_label);
-            node_reference->mesh_index = found_mesh_index;
+        const vec3_t* translation = &transformation_reference->translation;
+        const vec3_t* rotation = &transformation_reference->rotation;
 
-            const vec3_t* translation = &transformation_reference->translation;
-            const vec3_t* rotation = &transformation_reference->rotation;
+        mat4_t rotation_x_matrix;
+        mat4_create_identity_matrix(rotation_x_matrix);
+        mat4_create_rotation_x_matrix(-rotation->y, rotation_x_matrix);
 
-            mat4_t rotation_x_matrix;
-            mat4_create_identity_matrix(rotation_x_matrix);
-            mat4_create_rotation_x_matrix(rotation->y, rotation_x_matrix);
+        mat4_t rotation_y_matrix;
+        mat4_create_identity_matrix(rotation_y_matrix);
+        mat4_create_rotation_y_matrix(-rotation->y, rotation_y_matrix);
 
-            mat4_t rotation_y_matrix;
-            mat4_create_identity_matrix(rotation_y_matrix);
-            mat4_create_rotation_y_matrix(rotation->y, rotation_y_matrix);
+        mat4_t rotation_z_matrix;
+        mat4_create_identity_matrix(rotation_z_matrix);
+        mat4_create_rotation_y_matrix(-rotation->z, rotation_z_matrix);
 
-            mat4_t rotation_z_matrix;
-            mat4_create_identity_matrix(rotation_z_matrix);
-            mat4_create_rotation_y_matrix(rotation->z, rotation_z_matrix);
+        mat4_t rotation_xy_matrix;
+        mat4_multiplicate(rotation_x_matrix, rotation_y_matrix, rotation_xy_matrix);
 
-            mat4_t rotation_xy_matrix;
-            mat4_multiplicate(rotation_x_matrix, rotation_y_matrix, rotation_xy_matrix);
+        mat4_t rotation_matrix;
+        mat4_multiplicate(rotation_z_matrix, rotation_xy_matrix, rotation_matrix);
 
-            mat4_t rotation_matrix;
-            mat4_multiplicate(rotation_xy_matrix, rotation_z_matrix, rotation_matrix);
+        mat4_t translation_matrix;
+        mat4_create_identity_matrix(translation_matrix);
+        mat4_create_translation_matrix(translation->x, translation->y, translation->z, translation_matrix);
 
-            mat4_t translation_matrix;
-            mat4_create_identity_matrix(translation_matrix);
-            mat4_create_translation_matrix(translation->x, translation->y, translation->z, translation_matrix);
+        mat4_multiplicate(translation_matrix, rotation_matrix, node_reference->matrix);
 
-            mat4_multiplicate(translation_matrix, rotation_matrix, node_reference->matrix);
-
-            ++application->node_references_size;
-        }
+        ++application->node_references_size;
     }
 
     free(application->transformation_references);
@@ -1204,38 +1194,52 @@ int application_fill_gltf_data(application_t* application)
 
     sprintf(application->gltf_buffer.uri, "%s.bin", application->route_name);
 
-    uint32_t total_vertices_size = 0;
-    uint32_t total_indices_size = 0;
     uint32_t total_byte_length = 0;
+    uint32_t total_vertices_size = 0;
 
     for (uint32_t i = 0; i < application->geometry_references_size; ++i)
     {
         const geometry_t* geometry = application->geometry_references[i].geometry;
 
-        total_vertices_size += geometry->vertices_size;
-        total_indices_size += geometry->indices_size;
         total_byte_length += geometry->vertices_size * (sizeof(vec3_t) + sizeof(vec2_t));
         total_byte_length += geometry->indices_size * sizeof(uint32_t);
+
+        total_vertices_size += geometry->vertices_size;
     }
     application->gltf_buffer.byteLength = total_byte_length;
 
-    application->gltf_bufferViews[0].buffer = 0;
-    application->gltf_bufferViews[0].byteOffset = 0;
-    application->gltf_bufferViews[0].byteLength = total_vertices_size * sizeof(vec3_t);
-    application->gltf_bufferViews[0].byteStride = sizeof(vec3_t) + sizeof(vec2_t);
-    application->gltf_bufferViews[0].target = GLTF_BUFFER_VIEW_TARGET_ARRAY_BUFFER;
+    application->gltf_bufferViews = malloc(application->geometry_references_size * 3 * sizeof(gltf_bufferView_t));
+    if (application->gltf_bufferViews == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for gltf_bufferViews!\n");
+        return 0;
+    }
 
-    application->gltf_bufferViews[1].buffer = 0;
-    application->gltf_bufferViews[1].byteOffset = sizeof(vec3_t);
-    application->gltf_bufferViews[1].byteLength = total_vertices_size * sizeof(vec2_t);
-    application->gltf_bufferViews[1].byteStride = sizeof(vec3_t) + sizeof(vec2_t);
-    application->gltf_bufferViews[1].target = GLTF_BUFFER_VIEW_TARGET_ARRAY_BUFFER;
+    uint32_t current_vertices_size = 0;
+    uint32_t total_indices_size = 0;
 
-    application->gltf_bufferViews[2].buffer = 0;
-    application->gltf_bufferViews[2].byteOffset = total_vertices_size * (sizeof(vec3_t) + sizeof(vec2_t));
-    application->gltf_bufferViews[2].byteLength = total_indices_size * sizeof(uint32_t);
-    application->gltf_bufferViews[2].byteStride = 0;
-    application->gltf_bufferViews[2].target = GLTF_BUFFER_VIEW_TARGET_ELEMENT_ARRAY_BUFFER;
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        const geometry_t* geometry = application->geometry_references[i].geometry;
+
+        application->gltf_bufferViews[i * 3].buffer = 0;
+        application->gltf_bufferViews[i * 3].byteOffset = current_vertices_size * sizeof(vec3_t);
+        application->gltf_bufferViews[i * 3].byteLength = geometry->vertices_size * sizeof(vec3_t);
+        application->gltf_bufferViews[i * 3].target = GLTF_BUFFER_VIEW_TARGET_ARRAY_BUFFER;
+
+        application->gltf_bufferViews[i * 3 + 1].buffer = 0;
+        application->gltf_bufferViews[i * 3 + 1].byteOffset = total_vertices_size * sizeof(vec3_t) + current_vertices_size * sizeof(vec2_t);
+        application->gltf_bufferViews[i * 3 + 1].byteLength = geometry->vertices_size * sizeof(vec2_t);
+        application->gltf_bufferViews[i * 3 + 1].target = GLTF_BUFFER_VIEW_TARGET_ARRAY_BUFFER;
+
+        application->gltf_bufferViews[i * 3 + 2].buffer = 0;
+        application->gltf_bufferViews[i * 3 + 2].byteOffset = total_vertices_size * (sizeof(vec3_t) + sizeof(vec2_t)) + total_indices_size * sizeof(uint32_t);
+        application->gltf_bufferViews[i * 3 + 2].byteLength = geometry->indices_size * sizeof(uint32_t);
+        application->gltf_bufferViews[i * 3 + 2].target = GLTF_BUFFER_VIEW_TARGET_ELEMENT_ARRAY_BUFFER;
+
+        current_vertices_size += geometry->vertices_size;
+        total_indices_size += geometry->indices_size;
+    }
 
     application->gltf_accessors = malloc(application->geometry_references_size * 3 * sizeof(gltf_accessor_t));
     if (application->gltf_accessors == NULL)
@@ -1243,9 +1247,6 @@ int application_fill_gltf_data(application_t* application)
         fprintf(stderr, "Failed to allocate memory for gltf_accessors!\n");
         return 0;
     }
-
-    total_vertices_size = 0;
-    total_indices_size = 0;
 
     for (uint32_t i = 0; i < application->geometry_references_size; ++i)
     {
@@ -1313,8 +1314,8 @@ int application_fill_gltf_data(application_t* application)
             }
         }
 
-        position_accessor->bufferView = 0;
-        position_accessor->byteOffset = total_vertices_size * sizeof(vec3_t);
+        position_accessor->bufferView = i * 3;
+        position_accessor->byteOffset = current_vertices_size * sizeof(vec3_t);
         position_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_FLOAT;
         position_accessor->count = geometry->vertices_size;
         position_accessor->type = GLTF_ACCESSOR_TYPE_VEC3;
@@ -1325,8 +1326,8 @@ int application_fill_gltf_data(application_t* application)
         position_accessor->min_floats[1] = min_pos_values.y;
         position_accessor->min_floats[2] = min_pos_values.z;
 
-        tex_coords_accessor->bufferView = 1;
-        tex_coords_accessor->byteOffset = total_vertices_size * sizeof(vec2_t);
+        tex_coords_accessor->bufferView = i * 3 + 1;
+        tex_coords_accessor->byteOffset = current_vertices_size * sizeof(vec2_t);
         tex_coords_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_FLOAT;
         tex_coords_accessor->count = geometry->vertices_size;
         tex_coords_accessor->type = GLTF_ACCESSOR_TYPE_VEC2;
@@ -1335,7 +1336,7 @@ int application_fill_gltf_data(application_t* application)
         tex_coords_accessor->min_floats[0] = min_tex_coord_values.x;
         tex_coords_accessor->min_floats[1] = min_tex_coord_values.y;
 
-        indices_accessor->bufferView = 2;
+        indices_accessor->bufferView = i * 3 + 2;
         indices_accessor->byteOffset = total_indices_size * sizeof(uint32_t);
         indices_accessor->componentType = GLTF_ACCESSOR_COMPONENT_TYPE_UNSIGNED_INT;
         indices_accessor->count = geometry->indices_size;
@@ -1343,7 +1344,7 @@ int application_fill_gltf_data(application_t* application)
         indices_accessor->max_integer = geometry->indices_size - 1;
         indices_accessor->min_integer = 0;
 
-        total_vertices_size += geometry->vertices_size;
+        current_vertices_size += geometry->vertices_size;
         total_indices_size += geometry->indices_size;
     }
 
@@ -1453,7 +1454,20 @@ int application_generate_gltf_files(application_t* application)
     {
         const geometry_t* geometry = application->geometry_references[i].geometry;
 
-        fwrite(geometry->vertices, sizeof(vertex_t), geometry->vertices_size, bin_file);
+        for (uint32_t j = 0; j < geometry->vertices_size; ++j)
+        {
+            fwrite(&geometry->vertices[j].pos, sizeof(vec3_t), 1, bin_file);
+        }
+    }
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        const geometry_t* geometry = application->geometry_references[i].geometry;
+
+        for (uint32_t j = 0; j < geometry->vertices_size; ++j)
+        {
+            fwrite(&geometry->vertices[j].tex_coord, sizeof(vec2_t), 1, bin_file);
+        }
     }
 
     for (uint32_t i = 0; i < application->geometry_references_size; ++i)
@@ -1548,45 +1562,49 @@ int application_generate_gltf_files(application_t* application)
     fprintf(
         gltf_file,
         "    \"bufferViews\": [\n"
-        "        {\n"
-        "            \"buffer\": %u,\n"
-        "            \"byteLength\": %u,\n"
-        "            \"byteOffset\": %u,\n"
-        "            \"byteStride\": %u,\n"
-        "            \"target\": %u\n"
-        "        },\n"
-        "        {\n"
-        "            \"buffer\": %u,\n"
-        "            \"byteLength\": %u,\n"
-        "            \"byteOffset\": %u,\n"
-        "            \"byteStride\": %u,\n"
-        "            \"target\": %u\n"
-        "        },\n"
-        "        {\n"
-        "            \"buffer\": %u,\n"
-        "            \"byteLength\": %u,\n"
-        "            \"byteOffset\": %u,\n"
-        "            \"target\": %u\n"
-        "        }\n"
-        "    ],\n",
-        application->gltf_bufferViews[0].buffer,
-        application->gltf_bufferViews[0].byteLength,
-        application->gltf_bufferViews[0].byteOffset,
-        application->gltf_bufferViews[0].byteStride,
-        application->gltf_bufferViews[0].target,
-        application->gltf_bufferViews[1].buffer,
-        application->gltf_bufferViews[1].byteLength,
-        application->gltf_bufferViews[1].byteOffset,
-        application->gltf_bufferViews[1].byteStride,
-        application->gltf_bufferViews[1].target,
-        application->gltf_bufferViews[2].buffer,
-        application->gltf_bufferViews[2].byteLength,
-        application->gltf_bufferViews[2].byteOffset,
-        application->gltf_bufferViews[2].target
     );
+
+    for (uint32_t i = 0; i < application->geometry_references_size; ++i)
+    {
+        fprintf(
+            gltf_file,
+            "        {\n"
+            "            \"buffer\": %u,\n"
+            "            \"byteLength\": %u,\n"
+            "            \"byteOffset\": %u,\n"
+            "            \"target\": %u\n"
+            "        },\n"
+            "        {\n"
+            "            \"buffer\": %u,\n"
+            "            \"byteLength\": %u,\n"
+            "            \"byteOffset\": %u,\n"
+            "            \"target\": %u\n"
+            "        },\n"
+            "        {\n"
+            "            \"buffer\": %u,\n"
+            "            \"byteLength\": %u,\n"
+            "            \"byteOffset\": %u,\n"
+            "            \"target\": %u\n"
+            "        }%s\n",
+            application->gltf_bufferViews[i * 3].buffer,
+            application->gltf_bufferViews[i * 3].byteLength,
+            application->gltf_bufferViews[i * 3].byteOffset,
+            application->gltf_bufferViews[i * 3].target,
+            application->gltf_bufferViews[i * 3 + 1].buffer,
+            application->gltf_bufferViews[i * 3 + 1].byteLength,
+            application->gltf_bufferViews[i * 3 + 1].byteOffset,
+            application->gltf_bufferViews[i * 3 + 1].target,
+            application->gltf_bufferViews[i * 3 + 2].buffer,
+            application->gltf_bufferViews[i * 3 + 2].byteLength,
+            application->gltf_bufferViews[i * 3 + 2].byteOffset,
+            application->gltf_bufferViews[i * 3 + 2].target,
+            (i == application->geometry_references_size - 1) ? "\n" : ",\n"
+        );
+    }
 
     fprintf(
         gltf_file,
+        "    ],\n"
         "    \"accessors\": [\n"
     );
 
@@ -1596,7 +1614,7 @@ int application_generate_gltf_files(application_t* application)
             gltf_file,
             "        {\n"
             "            \"bufferView\": %u,\n"
-            "            \"byteOffset\": %u,\n"
+            "            \"byteOffset\": 0,\n"
             "            \"componentType\": %u,\n"
             "            \"count\": %u,\n"
             "            \"max\": [\n"
@@ -1613,7 +1631,7 @@ int application_generate_gltf_files(application_t* application)
             "        },\n"
             "        {\n"
             "            \"bufferView\": %u,\n"
-            "            \"byteOffset\": %u,\n"
+            "            \"byteOffset\": 0,\n"
             "            \"componentType\": %u,\n"
             "            \"count\": %u,\n"
             "            \"max\": [\n"
@@ -1628,7 +1646,7 @@ int application_generate_gltf_files(application_t* application)
             "        },\n"
             "        {\n"
             "            \"bufferView\": %u,\n"
-            "            \"byteOffset\": %u,\n"
+            "            \"byteOffset\": 0,\n"
             "            \"componentType\": %u,\n"
             "            \"count\": %u,\n"
             "            \"max\": [\n"
@@ -1640,7 +1658,6 @@ int application_generate_gltf_files(application_t* application)
             "            \"type\": \"%s\"\n"
             "        }%s",
             application->gltf_accessors[i * 3].bufferView,
-            application->gltf_accessors[i * 3].byteOffset,
             application->gltf_accessors[i * 3].componentType,
             application->gltf_accessors[i * 3].count,
             application->gltf_accessors[i * 3].max_floats[0],
@@ -1651,7 +1668,6 @@ int application_generate_gltf_files(application_t* application)
             application->gltf_accessors[i * 3].min_floats[2],
             application->gltf_accessors[i * 3].type,
             application->gltf_accessors[i * 3 + 1].bufferView,
-            application->gltf_accessors[i * 3 + 1].byteOffset,
             application->gltf_accessors[i * 3 + 1].componentType,
             application->gltf_accessors[i * 3 + 1].count,
             application->gltf_accessors[i * 3 + 1].max_floats[0],
@@ -1660,7 +1676,6 @@ int application_generate_gltf_files(application_t* application)
             application->gltf_accessors[i * 3 + 1].min_floats[1],
             application->gltf_accessors[i * 3 + 1].type,
             application->gltf_accessors[i * 3 + 2].bufferView,
-            application->gltf_accessors[i * 3 + 2].byteOffset,
             application->gltf_accessors[i * 3 + 2].componentType,
             application->gltf_accessors[i * 3 + 2].count,
             application->gltf_accessors[i * 3 + 2].max_integer,
